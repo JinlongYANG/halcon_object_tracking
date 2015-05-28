@@ -14,6 +14,8 @@
 ****************************************************************************/
 
 #include "ros/ros.h"
+#include "halcon_object_tracking/Full_list.h"
+#include <opencv2/core/core.hpp>
 
 
 #ifndef __APPLE__
@@ -131,6 +133,84 @@ HTuple fileSelection(char c, float &unit)
     return fileName;
 
 }
+HTuple fileSelection(char c, float &unit, float &size)
+{
+    cout << "Please select a file:" << endl;
+    cout << "1. bearing \n"
+         << "2. bluebox \n"
+         << "3. flange screw \n"
+         << "4. mechanicalpipe\n"
+         << "5. mechanicaltree \n"
+         << "6. ring wheel \n"
+         << "7. screw m5x12 - 8.8 \n"
+         << "8. spacer \n"
+         << "9. reduction-150-120-fillet-5\n"
+         << "10. simplifiedBearing \n"
+         << "11. whole part "
+         <<endl;
+
+    int fileIndex;
+    cin >> fileIndex;
+
+    while(fileIndex<1 || fileIndex > 11){
+        cout << "Wrong input! Select again!" << endl;
+        cin >> fileIndex;
+    };
+
+    HTuple fileName;
+    if(fileIndex == 1){
+        fileName = HTuple("bearing");
+        size = 0.04;
+    }
+    else if(fileIndex == 2){
+        fileName = HTuple("bluebox");
+        size = 0.2;
+    }
+    else if(fileIndex == 3){
+        fileName = HTuple("flange screw");
+        size = 0.1;
+    }
+    else if(fileIndex == 4){
+        fileName = HTuple("mechanicalpipe");
+        size = 0.2;
+    }
+    else if(fileIndex == 5){
+        fileName = HTuple("mechanicaltree");
+        size = 0.2;
+    }
+    else if(fileIndex == 6){
+        fileName = HTuple("ring wheel");
+        size = 0.2;
+    }
+    else if(fileIndex == 7){
+        fileName = HTuple("screw m5x12 - 8.8");
+        size = 0.2;
+    }
+    else if(fileIndex == 8){
+        fileName = HTuple("spacer");
+        size = 0.04;
+    }
+    else if (fileIndex == 9){
+        fileName = HTuple("reduction-150-120-fillet-5");
+        size = 0.25;
+    }
+    else if (fileIndex == 10){
+        fileName = HTuple("simplifiedBearing");
+        size = 0.04;
+    }
+    else{
+        fileName = HTuple("whole part");
+        size = 0.15;
+    }
+
+    unit = 1;
+    if (fileIndex == 2 ||fileIndex == 10)
+        unit = 0.001;
+
+
+    return fileName;
+
+}
 
 
 // Define a user-specific callback function
@@ -168,6 +248,10 @@ void workerThread(void *parameters)
     ros::NodeHandle nh;
     ros::ServiceServer get_det_obj;
     //get_det_obj = nh.advertiseService("get_det_obj", &get_det_obj_service_callback);
+    ros::Publisher single_obj_pub = nh.advertise<halcon_object_tracking::Object_pose>("single_object", 1);
+    halcon_object_tracking::Object_pose single_obj_msg;
+    ros::Publisher obj_list_pub = nh.advertise<halcon_object_tracking::Full_list>("object_list", 1);
+
 
     HFramegrabber *acq = (HFramegrabber*)parameters;
     HImage image;
@@ -180,6 +264,7 @@ void workerThread(void *parameters)
     //halcon_install/doc/html/reference/operators/calibrate_cameras.html
     float *camParamArray = (float*)malloc(sizeof(float)*8);
     //focus: 1551 pixels
+    float focus_in_pixel = 1551;
     camParamArray[0] = 0.0198528; //focus
     camParamArray[1] = 0; //Kappa
     camParamArray[2] = 1.28e-005; //Sx
@@ -188,6 +273,9 @@ void workerThread(void *parameters)
     camParamArray[5] = 369,303181; //Cy
     camParamArray[6] = image.Width(); //ImageWidth
     camParamArray[7] = image.Height(); //ImageHeight
+
+    std::cout << "Image size: " << image.Width().ToString() << "*" << image.Height().ToString() << std::endl;
+
     HTuple *camParams = new HTuple(camParamArray, 8);
 
     HTuple *genParam = new HTuple();
@@ -262,17 +350,37 @@ void workerThread(void *parameters)
 
     }
 
-    HTuple shape_model[6];
+    vector< HTuple > shape_model;
+    //shape size is the maximum length of the part
+    vector< float > shape_size;
+    vector< cv::Point3f > last_position;
     cout << "Which model do you want to load?" << endl;
+    cout << "6 models at most" << endl;
     c = 'y';
     int modelNumber = 0;
     while(c == 'Y' || c == 'y'){
-        float unit;
-        HTuple fileName = fileSelection(c, unit);
+        float unit, size;
+        HTuple fileName = fileSelection(c, unit, size);
+        shape_size.push_back(size);
+        cv::Point3f initialPosition;
+        initialPosition.x = NAN;
+        initialPosition.y = NAN;
+        initialPosition.z = NAN;
+        last_position.push_back(initialPosition);
+
 
         cout << "Loading selected model..." << modelNumber<< endl;
 
-        ReadShapeModel3d(fileName+".sm3", &(shape_model[modelNumber]));
+        try{
+            HTuple selected_shape_model;
+        //ReadShapeModel3d(fileName+".sm3", &(shape_model[modelNumber]));
+        ReadShapeModel3d(fileName+".sm3", &selected_shape_model);
+        shape_model.push_back(selected_shape_model);
+        }
+        catch(HException &exc)
+        {
+            cout << exc.ErrorMessage() << endl;
+        }
         modelNumber ++;
 
         cout << "(" << modelNumber << " /6) models have been loaded." << endl;
@@ -280,13 +388,6 @@ void workerThread(void *parameters)
         cin >> c;
     }
     gAcqMutex->LockMutex();
-
-    //create visulization window:
-    //    HSystem::SetWindowAttr("border_width",HTuple(0));
-
-    //  HWindow	window(16,16,image.Width(),image.Height(),0,"visible","");
-
-    //  window.DispObj(image);
 
     HTuple hv_WindowHandle;
     if (HDevWindowStack::IsOpen())
@@ -316,7 +417,7 @@ void workerThread(void *parameters)
     hv_Colors[4] = "khaki";
     hv_Colors[5] = "aquamarine";
 
-    for(int iia = 0; iia < 1000; iia++)
+    for(int frame = 0; frame < 1000; frame++)
     {
         // Enter the WaitCondition function with a locked mutex to avoid
         // problems with the image acquisition handle. The WaitCondition
@@ -341,15 +442,8 @@ void workerThread(void *parameters)
 
 
 
-        HImage greyImage;
+        HImage greyImage, greyImageReduced;
         Rgb1ToGray(image, &greyImage);
-
-
-
-        //        if (HDevWindowStack::IsOpen())
-        //          SetColor(HDevWindowStack::GetActive(),HTuple(hv_Colors[0]));
-        //        if (HDevWindowStack::IsOpen())
-        //          DispObj(greyImage, HDevWindowStack::GetActive());
 
         HTuple *Pose = new HTuple();
         HTuple *CovPose = new HTuple();
@@ -357,23 +451,58 @@ void workerThread(void *parameters)
         //      GrabImageAsync(image, acq, -1);
         //      std::cout << image.Width() << "," << image.Height() << std::endl;
         ROS_INFO("Searching for object...");
-        CountSeconds(&start);
+
         for(int modelIndex = 0; modelIndex < modelNumber; modelIndex++){
+
+            //using detection result of last frame to reduce searching range:
+            if(isfinite(last_position[modelIndex].x)){//last position is valid
+
+                cv::Point2f center, p1, p2;
+                float size2d;
+                center.x = last_position[modelIndex].x/last_position[modelIndex].z
+                        *focus_in_pixel + camParamArray[4];
+                center.y = last_position[modelIndex].y/last_position[modelIndex].z
+                        *focus_in_pixel + camParamArray[5];
+                size2d = shape_size[modelIndex]/last_position[modelIndex].z*focus_in_pixel;
+                p1.x = center.x - size2d;
+                p1.y = center.y - size2d;
+                p2.x = center.x + size2d;
+                p2.y = center.y + size2d;
+
+                std::cout << "search range: " << p1 << " " << p2 << std::endl;
+
+
+                HRegion region(HTuple(p1.y), HTuple(p1.x), HTuple(p2.y), HTuple(p2.x));
+                ReduceDomain(greyImage, region, &greyImageReduced);
+            }
+            else{//last position is invalid
+                ROS_ERROR("not valid");
+                CopyImage(greyImage, &greyImageReduced);
+            }
+
+//            HRegion region(HTuple(0), HTuple(640), HTuple(480), HTuple(1280));
+//            ReduceDomain(greyImage, region, &greyImageReduced);
+
+
+            CountSeconds(&start);
+
             try{
                 //FindShapeModel3d(greyImage, shape_model[0], 0.65, 0.9, 0, "recompute_score", "true", Pose, CovPose, Score);
-                FindShapeModel3d(greyImage, shape_model[modelIndex], 0.65, 0.9, 0,
+                FindShapeModel3d(greyImageReduced, shape_model[modelIndex], 0.65, 0.9, 0,
                                  hv_MatchingParameters, hv_MatchingParameterValues,
                                  Pose, CovPose, Score);
+
                 CountSeconds(&end);
                 time1 = end - start;
-                cout << "Find object in " << time1.TupleString(".1f").ToString() << " seconds." << endl;
+                cout << "Find object in " << time1.TupleString(".2f").ToString() << " seconds." << endl;
+
             }
             catch(HException &exc)
             {
                 cout << exc.ErrorMessage() << endl;
             }
             if (modelIndex == 0 && HDevWindowStack::IsOpen())
-                DispObj(greyImage, HDevWindowStack::GetActive());
+                DispObj(greyImageReduced, HDevWindowStack::GetActive());
             if(Score->TupleLength()>0){
                 std::cout << Score->TupleLength().ToString() << " matches have been found!" << std::endl;
                 for(int i = 0; i < Score->TupleLength(); i++){
@@ -398,9 +527,44 @@ void workerThread(void *parameters)
                             SetColor(HDevWindowStack::GetActive(),HTuple(hv_Colors[modelIndex]));
                         DispObj(ho_ModelContours, HDevWindowStack::GetActive());
                     }
+
+                    std::cout << Pose->TupleLength().ToString() << std::endl;
+                    for(int ahh = 0; ahh < 7; ahh++){
+                        std::cout << Pose->TupleSelect(ahh).ToString() << " ";
+                    }
+                    std::cout << std::endl;
+
+                    //update last position
+                    cv::Point3f posi;
+                    posi.x = float(Pose->TupleSelect(0));
+                    posi.y = float(Pose->TupleSelect(1));
+                    posi.z = float(Pose->TupleSelect(2));
+                    last_position[modelIndex] = posi;
+                    cout << "posi " << posi << std::endl;
+
+
+                    //publish customized message:
+                    single_obj_msg.object_name = "hahaha";
+                    single_obj_msg.x = 1;
+                    single_obj_msg.y = 1;
+                    single_obj_msg.z = 1;
+                    single_obj_msg.roll = 1;
+                    single_obj_msg.pitch = 1;
+                    single_obj_msg.yaw = 1;
+                    single_obj_pub.publish(single_obj_msg);
+
+
                 }
             }
+            else{//no instance has been found
+                cv::Point3f initialPosition;
+                initialPosition.x = NAN;
+                initialPosition.y = NAN;
+                initialPosition.z = NAN;
+                last_position[modelIndex] = initialPosition;
+            }
         }
+
     }
     gAcqMutex->UnlockMutex();
     cout << "End of acquisition thread\n";
