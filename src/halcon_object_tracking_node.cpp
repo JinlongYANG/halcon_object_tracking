@@ -325,10 +325,10 @@ void workerThread(void *parameters)
             //                               (HTuple(2).Append("ignore_part_polarity")), shape_model);
 
             CreateShapeModel3d(*object_model, *camParams, 0, 0, 0, "gba",
-                               -(HTuple(55).TupleRad()),HTuple(55).TupleRad(),
-                               -(HTuple(55).TupleRad()), HTuple(55).TupleRad(),
+                               -(HTuple(30).TupleRad()),HTuple(30).TupleRad(),
+                               -(HTuple(30).TupleRad()), HTuple(30).TupleRad(),
                                -HTuple(0).TupleRad(), HTuple(360).TupleRad(),
-                               1.11, 1.12, 10,
+                               1.1, 1.2, 10,
                                (HTuple("lowest_model_level").Append("metric").Append("union_adjacent_contours")),
                                (HTuple(2).Append("ignore_part_polarity").Append("true")),
                                shape_model);
@@ -353,7 +353,7 @@ void workerThread(void *parameters)
     vector< HTuple > shape_model;
     //shape size is the maximum length of the part
     vector< float > shape_size;
-    vector< cv::Point3f > last_position;
+    vector< vector< cv::Point3f > > last_position_model;
     cout << "Which model do you want to load?" << endl;
     cout << "6 models at most" << endl;
     c = 'y';
@@ -366,16 +366,18 @@ void workerThread(void *parameters)
         initialPosition.x = NAN;
         initialPosition.y = NAN;
         initialPosition.z = NAN;
-        last_position.push_back(initialPosition);
+        vector< cv::Point3f > last_position_instance;
+        last_position_instance.push_back(initialPosition);
+        last_position_model.push_back(last_position_instance);
 
 
         cout << "Loading selected model..." << modelNumber<< endl;
 
         try{
             HTuple selected_shape_model;
-        //ReadShapeModel3d(fileName+".sm3", &(shape_model[modelNumber]));
-        ReadShapeModel3d(fileName+".sm3", &selected_shape_model);
-        shape_model.push_back(selected_shape_model);
+            //ReadShapeModel3d(fileName+".sm3", &(shape_model[modelNumber]));
+            ReadShapeModel3d(fileName+".sm3", &selected_shape_model);
+            shape_model.push_back(selected_shape_model);
         }
         catch(HException &exc)
         {
@@ -404,7 +406,7 @@ void workerThread(void *parameters)
     //hv_MatchingParameters[1] = "pose_refinement";
     hv_MatchingParameters[1] = "max_overlap";
     hv_MatchingParameterValues.Clear();
-    hv_MatchingParameterValues[0] = 5;
+    hv_MatchingParameterValues[0] = 3;
     //hv_MatchingParameterValues[1] = "least_squares_high";
     hv_MatchingParameterValues[1] = 0;
 
@@ -451,119 +453,166 @@ void workerThread(void *parameters)
         //      GrabImageAsync(image, acq, -1);
         //      std::cout << image.Width() << "," << image.Height() << std::endl;
         ROS_INFO("Searching for object...");
-
+    CountSeconds(&start);
         for(int modelIndex = 0; modelIndex < modelNumber; modelIndex++){
+            int instance_number = last_position_model[modelIndex].size();
+            vector< cv::Point3f > last_position_instance;
+            for(int instance = 0; instance < instance_number; instance++){
+                //using detection result of last frame to reduce searching range:
+                if(isfinite(last_position_model[modelIndex][instance].x)){//last position is valid
 
-            //using detection result of last frame to reduce searching range:
-            if(isfinite(last_position[modelIndex].x)){//last position is valid
+                    cv::Point2f center, p1, p2;
+                    float size2d;
+                    center.x = last_position_model[modelIndex][instance].x/last_position_model[modelIndex][instance].z
+                            *focus_in_pixel + camParamArray[4];
+                    center.y = last_position_model[modelIndex][instance].y/last_position_model[modelIndex][instance].z
+                            *focus_in_pixel + camParamArray[5];
+                    size2d = shape_size[modelIndex]/last_position_model[modelIndex][instance].z*focus_in_pixel;
+                    p1.x = center.x - size2d;
+                    p1.y = center.y - size2d;
+                    p2.x = center.x + size2d;
+                    p2.y = center.y + size2d;
 
-                cv::Point2f center, p1, p2;
-                float size2d;
-                center.x = last_position[modelIndex].x/last_position[modelIndex].z
-                        *focus_in_pixel + camParamArray[4];
-                center.y = last_position[modelIndex].y/last_position[modelIndex].z
-                        *focus_in_pixel + camParamArray[5];
-                size2d = shape_size[modelIndex]/last_position[modelIndex].z*focus_in_pixel;
-                p1.x = center.x - size2d;
-                p1.y = center.y - size2d;
-                p2.x = center.x + size2d;
-                p2.y = center.y + size2d;
-
-                std::cout << "search range: " << p1 << " " << p2 << std::endl;
-
-
-                HRegion region(HTuple(p1.y), HTuple(p1.x), HTuple(p2.y), HTuple(p2.x));
-                ReduceDomain(greyImage, region, &greyImageReduced);
-            }
-            else{//last position is invalid
-                ROS_ERROR("not valid");
-                CopyImage(greyImage, &greyImageReduced);
-            }
-
-//            HRegion region(HTuple(0), HTuple(640), HTuple(480), HTuple(1280));
-//            ReduceDomain(greyImage, region, &greyImageReduced);
+                    //                    std::cout << "search range: " << p1 << " " << p2 << std::endl;
 
 
-            CountSeconds(&start);
-
-            try{
-                //FindShapeModel3d(greyImage, shape_model[0], 0.65, 0.9, 0, "recompute_score", "true", Pose, CovPose, Score);
-                FindShapeModel3d(greyImageReduced, shape_model[modelIndex], 0.65, 0.9, 0,
-                                 hv_MatchingParameters, hv_MatchingParameterValues,
-                                 Pose, CovPose, Score);
-
-                CountSeconds(&end);
-                time1 = end - start;
-                cout << "Find object in " << time1.TupleString(".2f").ToString() << " seconds." << endl;
-
-            }
-            catch(HException &exc)
-            {
-                cout << exc.ErrorMessage() << endl;
-            }
-            if (modelIndex == 0 && HDevWindowStack::IsOpen())
-                DispObj(greyImageReduced, HDevWindowStack::GetActive());
-            if(Score->TupleLength()>0){
-                std::cout << Score->TupleLength().ToString() << " matches have been found!" << std::endl;
-                for(int i = 0; i < Score->TupleLength(); i++){
-                    std::cout << Score->TupleSelect(i).ToString() << "  ";
+                    HRegion region(HTuple(p1.y), HTuple(p1.x), HTuple(p2.y), HTuple(p2.x));
+                    ReduceDomain(greyImage, region, &greyImageReduced);
                 }
-                std::cout << endl;
+                else{//last position is invalid
+                    ROS_ERROR("not valid");
+                    CopyImage(greyImage, &greyImageReduced);
+                }
 
-                //Visualize the found matches in the image by
-                //projecting the 3D shape model with the pose of the match
-                HObject ho_ModelContours;
-                HTuple end_val58 = (Score->TupleLength())-1;
-                HTuple step_val58 = 1;
-                SetLineStyle(hv_WindowHandle, (HTuple(10).Append(10)));
-                for (HTuple hv_J=0; hv_J.Continue(end_val58, step_val58); hv_J += step_val58)
+                //            HRegion region(HTuple(0), HTuple(640), HTuple(480), HTuple(1280));
+                //            ReduceDomain(greyImage, region, &greyImageReduced);
+
+
+
+
+                try{
+                    //FindShapeModel3d(greyImage, shape_model[0], 0.65, 0.9, 0, "recompute_score", "true", Pose, CovPose, Score);
+                    FindShapeModel3d(greyImageReduced, shape_model[modelIndex], 0.65, 0.9, 0,
+                                     hv_MatchingParameters, hv_MatchingParameterValues,
+                                     Pose, CovPose, Score);
+
+
+
+                }
+                catch(HException &exc)
                 {
-                    HTuple hv_PoseTmp = Pose->TupleSelectRange(hv_J*7,(hv_J*7)+6);
-                    ProjectShapeModel3d(&ho_ModelContours, shape_model[modelIndex], *camParams, hv_PoseTmp,
-                                        "true", HTuple(30).TupleRad());
-                    if (HDevWindowStack::IsOpen()){
-                        ROS_INFO("Displaying object...");
-                        if (HDevWindowStack::IsOpen())
-                            SetColor(HDevWindowStack::GetActive(),HTuple(hv_Colors[modelIndex]));
-                        DispObj(ho_ModelContours, HDevWindowStack::GetActive());
+                    cout << exc.ErrorMessage() << endl;
+                }
+                if (modelIndex == 0 && HDevWindowStack::IsOpen())
+                    DispObj(greyImage, HDevWindowStack::GetActive());
+                if(Score->TupleLength()>0){
+                    //                    std::cout << Score->TupleLength().ToString() << " matches have been found!" << std::endl;
+                    //                    for(int i = 0; i < Score->TupleLength(); i++){
+                    //                        std::cout << Score->TupleSelect(i).ToString() << "  ";
+                    //                    }
+                    //                    std::cout << endl;
+
+                    //Visualize the found matches in the image by
+                    //projecting the 3D shape model with the pose of the match
+                    HObject ho_ModelContours;
+                    HTuple end_val58 = (Score->TupleLength())-1;
+                    HTuple step_val58 = 1;
+                    SetLineStyle(hv_WindowHandle, (HTuple(10).Append(10)));
+
+                    for (HTuple hv_J=0; hv_J.Continue(end_val58, step_val58); hv_J += step_val58)
+                    {
+                        HTuple hv_PoseTmp = Pose->TupleSelectRange(hv_J*7,(hv_J*7)+6);
+                        ProjectShapeModel3d(&ho_ModelContours, shape_model[modelIndex], *camParams, hv_PoseTmp,
+                                            "true", HTuple(30).TupleRad());
+                        if (HDevWindowStack::IsOpen()){
+                            //                            ROS_INFO("Displaying object...");
+                            if (HDevWindowStack::IsOpen())
+                                SetColor(HDevWindowStack::GetActive(),HTuple(hv_Colors[modelIndex]));
+                            DispObj(ho_ModelContours, HDevWindowStack::GetActive());
+                        }
+
+                        //                        std::cout << Pose->TupleLength().ToString() << std::endl;
+                        //                        for(int ahh = 0; ahh < 7; ahh++){
+                        //                            std::cout << Pose->TupleSelect(ahh).ToString() << " ";
+                        //                        }
+                        //                        std::cout << std::endl;
+
+                        //update last position
+                        cv::Point3f posi;
+                        posi.x = float(Pose->TupleSelect(hv_J*7));
+                        posi.y = float(Pose->TupleSelect(hv_J*7+1));
+                        posi.z = float(Pose->TupleSelect(hv_J*7+2));
+
+                        //cout << "posi " << posi << std::endl;
+
+                        last_position_instance.push_back(posi);
+
+
+
+                        //publish customized message:
+                        single_obj_msg.object_name = "hahaha";
+                        single_obj_msg.x = 1;
+                        single_obj_msg.y = 1;
+                        single_obj_msg.z = 1;
+                        single_obj_msg.roll = 1;
+                        single_obj_msg.pitch = 1;
+                        single_obj_msg.yaw = 1;
+                        single_obj_pub.publish(single_obj_msg);
                     }
-
-                    std::cout << Pose->TupleLength().ToString() << std::endl;
-                    for(int ahh = 0; ahh < 7; ahh++){
-                        std::cout << Pose->TupleSelect(ahh).ToString() << " ";
-                    }
-                    std::cout << std::endl;
-
-                    //update last position
-                    cv::Point3f posi;
-                    posi.x = float(Pose->TupleSelect(0));
-                    posi.y = float(Pose->TupleSelect(1));
-                    posi.z = float(Pose->TupleSelect(2));
-                    last_position[modelIndex] = posi;
-                    cout << "posi " << posi << std::endl;
-
-
-                    //publish customized message:
-                    single_obj_msg.object_name = "hahaha";
-                    single_obj_msg.x = 1;
-                    single_obj_msg.y = 1;
-                    single_obj_msg.z = 1;
-                    single_obj_msg.roll = 1;
-                    single_obj_msg.pitch = 1;
-                    single_obj_msg.yaw = 1;
-                    single_obj_pub.publish(single_obj_msg);
-
-
+                }
+                else{//no instance has been found
+                    //                    if(last_position_model[modelIndex].size() > 1){
+                    //                        last_position_model[modelIndex].erase(last_position_model[modelIndex].begin()+instance);
+                    //                    }
+                    //                    else{
+                    //                    cv::Point3f initialPosition;
+                    //                    initialPosition.x = NAN;
+                    //                    initialPosition.y = NAN;
+                    //                    initialPosition.z = NAN;
+                    //                    last_position_model[modelIndex][0] = initialPosition;
+                    //                    }
                 }
             }
-            else{//no instance has been found
+            last_position_model[modelIndex].clear();
+            if(last_position_instance.size()){
+                for(int instance = 0; instance < last_position_instance.size(); instance++){
+                    last_position_model[modelIndex].push_back(last_position_instance[instance]);
+                }
+            }
+            else{
                 cv::Point3f initialPosition;
                 initialPosition.x = NAN;
                 initialPosition.y = NAN;
                 initialPosition.z = NAN;
-                last_position[modelIndex] = initialPosition;
+                last_position_model[modelIndex].push_back(initialPosition);
             }
+
         }
+
+        float overlappingThreshold = 0.01;
+        for(int modelIndex = 0; modelIndex < modelNumber; modelIndex++){
+            for(int instanceIndex = 0; instanceIndex < last_position_model[modelIndex].size(); instanceIndex++){
+                for(int candidateIndex = last_position_model[modelIndex].size()-1; candidateIndex >instanceIndex ; candidateIndex --){
+                    float abs_x = fabs(last_position_model[modelIndex][instanceIndex].x
+                                      - last_position_model[modelIndex][candidateIndex].x);
+                    float abs_y = fabs(last_position_model[modelIndex][instanceIndex].y
+                                      - last_position_model[modelIndex][candidateIndex].y);
+                    float abs_z = fabs(last_position_model[modelIndex][instanceIndex].z
+                                      - last_position_model[modelIndex][candidateIndex].z);
+                    if(abs_x < overlappingThreshold && abs_y < overlappingThreshold && abs_z  < overlappingThreshold ){
+                        last_position_model[modelIndex].erase(last_position_model[modelIndex].begin() + candidateIndex);
+                    }
+                }
+            }
+            if(isfinite(last_position_model[modelIndex][0].x))
+                cout << "Model " << modelIndex << ": " << last_position_model[modelIndex].size() << " instances." << endl;
+            else
+                cout << "Model " << modelIndex << ": " << 0 << " instances." << endl;
+        }
+
+        CountSeconds(&end);
+        time1 = end - start;
+        cout << "Find all objects in " << time1.TupleString(".2f").ToString() << " seconds." << endl;
 
     }
     gAcqMutex->UnlockMutex();
@@ -673,7 +722,7 @@ int main(int argc, char *argv[])
         //        cout << "\n\nType 'y' and 'ENTER' to exit\n\n";
         //        char input;
         //        cin >> input;
-        while(true)
+        while(ros::ok())
             ;
         //            cin >> input;
 
