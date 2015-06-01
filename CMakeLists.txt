@@ -109,7 +109,10 @@ include_directories(SYSTEM ${OpenCV_INCLUDE_DIRS} )
 # )
 
 ## Declare a cpp executable
-add_executable(halcon_object_tracking_node src/halcon_object_tracking_node.cpp)
+add_executable(halcon_object_tracking_node 
+src/halcon_object_tracking_node.cpp
+
+)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes

@@ -90,13 +90,15 @@ HTuple fileSelection(char c, float &unit)
          << "8. spacer \n"
          << "9. reduction-150-120-fillet-5\n"
          << "10. simplifiedBearing \n"
-         << "11. whole part "
+         << "11. whole part \n"
+         << "12. bluebox_shifted \n"
+         << "13. plate"
          <<endl;
 
     int fileIndex;
     cin >> fileIndex;
 
-    while(fileIndex<1 || fileIndex > 11){
+    while(fileIndex<1 || fileIndex > 13){
         cout << "Wrong input! Select again!" << endl;
         cin >> fileIndex;
     };
@@ -122,11 +124,14 @@ HTuple fileSelection(char c, float &unit)
         fileName = HTuple("reduction-150-120-fillet-5");
     else if (fileIndex == 10)
         fileName = HTuple("simplifiedBearing");
-    else
+    else if (fileIndex == 11)
         fileName = HTuple("whole part");
-
+    else if (fileIndex == 12)
+        fileName = HTuple("bluebox_shifted");
+    else
+        fileName = HTuple("plate");
     unit = 1;
-    if (fileIndex == 2 ||fileIndex == 10)
+    if (fileIndex == 2 ||fileIndex == 10 || fileIndex == 12 || fileIndex == 13)
         unit = 0.001;
 
 
@@ -146,13 +151,15 @@ HTuple fileSelection(char c, float &unit, float &size)
          << "8. spacer \n"
          << "9. reduction-150-120-fillet-5\n"
          << "10. simplifiedBearing \n"
-         << "11. whole part "
+         << "11. whole part \n"
+         << "12. bluebox_shifted \n"
+         << "13. plate"
          <<endl;
 
     int fileIndex;
     cin >> fileIndex;
 
-    while(fileIndex<1 || fileIndex > 11){
+    while(fileIndex<1 || fileIndex > 13){
         cout << "Wrong input! Select again!" << endl;
         cin >> fileIndex;
     };
@@ -198,13 +205,21 @@ HTuple fileSelection(char c, float &unit, float &size)
         fileName = HTuple("simplifiedBearing");
         size = 0.04;
     }
-    else{
+    else if (fileIndex == 11){
         fileName = HTuple("whole part");
-        size = 0.15;
+        size = 0.2;
+    }
+    else if (fileIndex == 12){
+        fileName = HTuple("bluebox_shifted");
+        size = 0.3;
+    }
+    else{
+        fileName = HTuple("plate");
+        size = 0.3;
     }
 
     unit = 1;
-    if (fileIndex == 2 ||fileIndex == 10)
+    if (fileIndex == 2 ||fileIndex == 10 || fileIndex == 12 || fileIndex == 13)
         unit = 0.001;
 
 
@@ -325,9 +340,9 @@ void workerThread(void *parameters)
             //                               (HTuple(2).Append("ignore_part_polarity")), shape_model);
 
             CreateShapeModel3d(*object_model, *camParams, 0, 0, 0, "gba",
-                               -(HTuple(30).TupleRad()),HTuple(30).TupleRad(),
-                               -(HTuple(30).TupleRad()), HTuple(30).TupleRad(),
-                               -HTuple(0).TupleRad(), HTuple(360).TupleRad(),
+                               -(HTuple(45).TupleRad()),HTuple(45).TupleRad(),
+                               -(HTuple(45).TupleRad()), HTuple(45).TupleRad(),
+                               -HTuple(0).TupleRad(), HTuple(90).TupleRad(),
                                1.1, 1.2, 10,
                                (HTuple("lowest_model_level").Append("metric").Append("union_adjacent_contours")),
                                (HTuple(2).Append("ignore_part_polarity").Append("true")),
@@ -504,7 +519,7 @@ void workerThread(void *parameters)
                     cout << exc.ErrorMessage() << endl;
                 }
                 if (modelIndex == 0 && HDevWindowStack::IsOpen())
-                    DispObj(greyImage, HDevWindowStack::GetActive());
+                    DispObj(greyImageReduced, HDevWindowStack::GetActive());
                 if(Score->TupleLength()>0){
                     //                    std::cout << Score->TupleLength().ToString() << " matches have been found!" << std::endl;
                     //                    for(int i = 0; i < Score->TupleLength(); i++){
@@ -543,7 +558,7 @@ void workerThread(void *parameters)
                         posi.y = float(Pose->TupleSelect(hv_J*7+1));
                         posi.z = float(Pose->TupleSelect(hv_J*7+2));
 
-                        //cout << "posi " << posi << std::endl;
+                        cout << "posi " << posi << std::endl;
 
                         last_position_instance.push_back(posi);
 
