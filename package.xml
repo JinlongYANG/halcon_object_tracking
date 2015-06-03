@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package>
-  <name>halcon_object_tracking</name>
+  <name>halcon_tracking</name>
   <version>0.0.0</version>
   <description>The halcon_object_tracking package</description>
 

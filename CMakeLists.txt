@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(halcon_object_tracking)
+project(halcon_tracking)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 )
 
+find_package(Qt4 REQUIRED COMPONENTS QtCore QtGui)
 find_package(OpenCV REQUIRED)
 
 ## System dependencies are found with CMake's conventions
@@ -47,17 +48,18 @@ LINK_DIRECTORIES($ENV{HALCONROOT}/lib/$ENV{HALCONARCH})
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
- add_message_files(
-   FILES
-   Object_pose.msg
-   Full_list.msg
- )
+# add_message_files(
+#   FILES
+#   Actor.msg
+#   ActorVec.msg
+# )
 
 ## Generate services in the 'srv' folder
 # add_service_files(
 #   FILES
-#   Service1.srv
-#   Service2.srv
+#   AddTwoInts.srv
+#   ObjRecConfigService.srv
+#   ObjRecStateService.srv
 # )
 
 ## Generate actions in the 'action' folder
@@ -84,7 +86,7 @@ LINK_DIRECTORIES($ENV{HALCONROOT}/lib/$ENV{HALCONARCH})
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 # INCLUDE_DIRS include
-#  LIBRARIES halcon_object_tracking
+#  LIBRARIES halcon_tracking
 #  CATKIN_DEPENDS roscpp rospy std_msgs
 #  DEPENDS system_lib
 )
@@ -97,29 +99,44 @@ catkin_package(
 ## Your package locations should be listed before other locations
 # include_directories(include)
 include_directories(include
+  src
   ${catkin_INCLUDE_DIRS}
+  ${QT_INCLUDES}
   $ENV{HALCONROOT}/include
 )
 
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIRS} )
 
 ## Declare a cpp library
-# add_library(halcon_object_tracking
-#   src/${PROJECT_NAME}/halcon_object_tracking.cpp
+# add_library(halcon_tracking
+#   src/${PROJECT_NAME}/halcon_tracking.cpp
 # )
 
 ## Declare a cpp executable
-add_executable(halcon_object_tracking_node src/halcon_object_tracking_node.cpp)
+add_executable(halcon_tracking_node src/halcon_tracking_node.cpp
+src/halcon_shape_detector_3d.cpp
+)
+
+add_executable(halcon_tracking_client src/halcon_tracking_client.cpp
+)
+
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
-# add_dependencies(halcon_object_tracking_node halcon_object_tracking_generate_messages_cpp)
+# add_dependencies(halcon_tracking_node halcon_tracking_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(halcon_object_tracking_node
+target_link_libraries(halcon_tracking_node
   ${catkin_LIBRARIES}
   halcon
   halconcpp
   ${OpenCV_LIBRARIES}
+  ${QT_QTCORE_LIBRARY}
+  ${QT_QTXML_LIBRARY}
+  ${QT_QTGUI_LIBRARY}
 )
+target_link_libraries(halcon_tracking_client
 
+  ${catkin_LIBRARIES}
+
+)
