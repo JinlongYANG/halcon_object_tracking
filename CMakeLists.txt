@@ -113,7 +113,6 @@ include_directories(SYSTEM ${OpenCV_INCLUDE_DIRS} )
 # )
 
 ## Declare a cpp executable
-<<<<<<< HEAD
 add_executable(halcon_tracking_node src/halcon_tracking_node.cpp
 src/halcon_shape_detector_3d.cpp
 )

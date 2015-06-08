@@ -10,6 +10,7 @@
 #include <perception_srvs/ObjRecConfigService.h>
 
 #include <QMutex>
+#include <pthread.h>
 
 #define OBJECT_RECOGNITION_RESTART 1001
 #define OBJECT_RECOGNITION_PAUSE 1002
@@ -19,12 +20,14 @@ using namespace std;
 using namespace ros;
 
 ros::ServiceServer set_config_server, status_server;
-HALCON_SHAPE_DETECTOR_3D detector;
-bool pause_flag = false;
-bool restart_flag = false;
+pthread_t  gThreadHandle;
+
 
 QMutex mutex_state;
 int32_t state = 1002;
+
+
+
 
 void get_state(int32_t &state_local)
 {
@@ -64,24 +67,6 @@ bool obj_rec_status_service_callback(perception_srvs::ObjRecStateServiceRequest 
             res.success = false;
         std::cout << "state changed to : " << req.new_state << std::endl;
 
-        //if restart:
-        if(state == OBJECT_RECOGNITION_RESTART){
-                detector.detect_one_loaded_model_without_visualization(5);
-        }
-
-        //if pause:
-        else if (state == OBJECT_RECOGNITION_PAUSE){
-
-        }
-
-        //if stop
-        else if (state == OBJECT_RECOGNITION_STOP){
-            detector.reset();
-            ROS_INFO("Detector initialization...");
-            detector.load_all_models();
-            ROS_INFO("Ready to detect and track object.");
-        }
-
     }
     else //retrieve current state
     {
@@ -93,19 +78,61 @@ bool obj_rec_status_service_callback(perception_srvs::ObjRecStateServiceRequest 
     return true;
 }
 
+void workerThread(void *parameters)
+{
+    HALCON_SHAPE_DETECTOR_3D detector;
+    detector.initialization();
+    detector.create_model();
+    detector.load_all_models();
+    ROS_INFO("Detector initialized!");
 
+
+
+    int32_t state_local;
+    get_state(state_local);
+
+    while(ros::ok()){
+    if(state_local == OBJECT_RECOGNITION_RESTART){
+        //cout <<"running!"<< endl;
+        detector.detect_one_loaded_model(5);
+    }
+    else if(state_local == OBJECT_RECOGNITION_PAUSE){
+        //cout <<"paused!"<< endl;
+
+    }
+    else if(state_local == OBJECT_RECOGNITION_STOP){
+        //cout <<"stopped!"<< endl;
+        detector.reset();
+        detector.create_model();
+        detector.load_all_models();
+        ROS_INFO("Detector reinitialized!");
+        state_local = OBJECT_RECOGNITION_PAUSE;
+        set_state(state_local);
+    }
+    get_state(state_local);
+    }
+
+}
 
 
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "halcon_tracking");
   ros::NodeHandle nh;
+  int foo;
 
-  detector.initialization();
   ROS_INFO("Detector initialization...");
 
-  detector.create_model();
-  detector.load_all_models();
+  int error;
+
+  if((error=pthread_create(&gThreadHandle,
+                           NULL,
+                           (void*(*)(void*))workerThread,
+                           (void*)&foo))!=0)
+  {
+      cout << "Error in pthread_create. Error: " << error << endl;
+      return 0;
+  }
 
 
   ROS_INFO("Preparing services...");
@@ -114,24 +141,6 @@ int main(int argc, char **argv)
   ROS_INFO("Ready to detect and track object.");
 
 
-
-
-//  detector.create_model();
-//  detector.load_model();
-//  for(int i = 0; i < 5; i++)
-//  detector.detect_all_loaded_models();
-//  detector.reset();
-//  detector.create_model();
-//  detector.load_model();
-//  for(int i = 0; i < 5; i++)
-//  detector.detect_all_loaded_models();
-//  for(int i = 0; i < 5; i++)
-//      detector.detect_one_loaded_model(1);
-//  //detector.object_detection();
-//  detector.reset();
-//  detector.load_all_models();
-//  for(int i = 0; i < 5; i++)
-//  detector.detect_one_loaded_model(9);
   ros::spin();
 
   return 0;
